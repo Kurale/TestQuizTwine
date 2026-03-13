@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Интерактивный учебный квиз</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body { transition: background-color .25s ease, color .25s ease; }
+    .card-enter { opacity: 0; transform: translateY(12px) scale(.99); }
+    .card-enter-active { opacity: 1; transform: translateY(0) scale(1); transition: all .35s ease; }
+    .feedback-enter { opacity: 0; max-height: 0; overflow: hidden; }
+    .feedback-enter-active { opacity: 1; max-height: 320px; transition: all .35s ease; }
+    .drop-target { min-height: 54px; border: 2px dashed rgba(148, 163, 184, 0.65); }
+    .drop-target.filled { border-style: solid; }
+    .draggable { cursor: grab; }
+    .draggable:active { cursor: grabbing; }
+  </style>
+</head>
+<body class="h-full bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+  <div class="min-h-full">
+    <header class="sticky top-0 z-10 border-b border-slate-200/80 bg-white/85 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+      <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+        <h1 id="quizTitleHeader" class="text-lg font-bold">Интерактивный учебный квиз</h1>
+        <div class="flex items-center gap-2">
+          <button id="themeToggle" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">🌙/☀️</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-5xl px-4 py-8">
+      <section id="mainMenu" class="card-enter rounded-2xl border border-slate-200 bg-white p-8 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        <h2 id="quizTitle" class="mb-3 text-3xl font-extrabold"></h2>
+        <p class="mb-8 text-slate-600 dark:text-slate-300">Проверьте знания в пошаговом формате: ответили — проверили — получили объяснение.</p>
+        <div class="flex flex-wrap gap-3">
+          <button id="startBtn" class="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700">Начать</button>
+          <button id="showHistoryBtn" class="rounded-xl border border-slate-300 px-5 py-3 font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Результаты предыдущих прохождений</button>
+          <button id="continueBtn" class="hidden rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700">Продолжить с места остановки</button>
+        </div>
+        <div id="historyPanel" class="mt-6 hidden rounded-xl border border-slate-200 p-4 dark:border-slate-700"></div>
+      </section>
+
+      <section id="quizScreen" class="hidden card-enter rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        <div class="mb-4 flex items-center justify-between">
+          <div class="text-sm text-slate-600 dark:text-slate-300">Вопрос <span id="currentIndex">1</span>/<span id="totalQuestions">0</span></div>
+          <div class="text-sm font-semibold">Время: <span id="timer">00:00</span></div>
+        </div>
+        <div class="mb-4 h-2 rounded-full bg-slate-200 dark:bg-slate-700">
+          <div id="progressBar" class="h-2 rounded-full bg-indigo-600 transition-all"></div>
+        </div>
+        <article>
+          <div id="questionContent" class="mb-4"></div>
+          <h3 id="questionText" class="mb-5 text-xl font-bold"></h3>
+          <div id="answerArea" class="space-y-3"></div>
+        </article>
+
+        <div class="mt-6 flex flex-wrap gap-3">
+          <button id="checkBtn" class="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700">Проверить</button>
+          <button id="nextBtn" class="hidden rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700">Далее</button>
+        </div>
+
+        <div id="feedbackBox" class="feedback-enter mt-5 hidden rounded-xl border p-4"></div>
+      </section>
+
+      <section id="resultScreen" class="hidden card-enter rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+        <h2 class="mb-3 text-2xl font-bold">Результат</h2>
+        <div id="resultSummary" class="mb-6 grid gap-3 sm:grid-cols-2"></div>
+        <div class="overflow-x-auto">
+          <table class="min-w-full border-collapse text-sm">
+            <thead>
+              <tr class="border-b border-slate-300 dark:border-slate-700">
+                <th class="px-2 py-2 text-left">#</th>
+                <th class="px-2 py-2 text-left">Вопрос</th>
+                <th class="px-2 py-2 text-left">Ваш ответ</th>
+                <th class="px-2 py-2 text-left">Правильный</th>
+                <th class="px-2 py-2 text-left">Объяснение</th>
+              </tr>
+            </thead>
+            <tbody id="detailsBody"></tbody>
+          </table>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+          <button id="restartBtn" class="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700">Пройти заново</button>
+          <button id="downloadBtn" class="rounded-xl border border-slate-300 px-5 py-3 font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Скачать результат (JSON)</button>
+          <button id="copyLinkBtn" class="rounded-xl border border-slate-300 px-5 py-3 font-semibold hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">Скопировать ссылку на результат</button>
+        </div>
+      </section>
+
+      <section id="editorPanel" class="mt-6 hidden rounded-2xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-600 dark:bg-amber-900/20">
+        <h3 class="mb-3 text-lg font-bold">Редактировать вопросы (режим автора)</h3>
+        <p class="mb-3 text-sm">Измените JSON и нажмите «Применить». Используйте только структуру quizData.questions.</p>
+        <textarea id="editorTextarea" class="h-64 w-full rounded-lg border border-amber-300 p-3 font-mono text-sm text-slate-900"></textarea>
+        <button id="applyEditBtn" class="mt-3 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white">Применить</button>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const EDIT_MODE = false;
+    const STORAGE_KEYS = {
+      theme: 'quiz_theme',
+      progress: 'quiz_progress',
+      results: 'quiz_results'
+    };
+
+    const quizData = {
+      title: 'JavaScript и веб-практика: мини-тест',
+      timeLimitSec: 900,
+      questions: [
+        {
+          id: 1,
+          type: 'multiple',
+          contentHTML: '<p class="mb-2 text-slate-600 dark:text-slate-300">Выберите два корректных свойства массива в JS.</p>',
+          question: 'Какие методы НЕ мутируют исходный массив?',
+          answers: ['map()', 'filter()', 'sort()', 'reverse()'],
+          correct: ['map()', 'filter()'],
+          explanation: 'map и filter возвращают новый массив. sort и reverse изменяют исходный.'
+        },
+        {
+          id: 2,
+          type: 'yesno',
+          contentHTML: '<div class="rounded-xl bg-slate-100 p-3 dark:bg-slate-800"><code>const x = NaN; console.log(x === NaN);</code></div>',
+          question: 'Вернёт ли выражение выше true?',
+          answers: ['Да', 'Нет'],
+          correct: 'нет',
+          explanation: 'NaN не равен даже самому себе. Для проверки используют Number.isNaN(x).'
+        },
+        {
+          id: 3,
+          type: 'input',
+          contentHTML: '<p class="text-slate-600 dark:text-slate-300">Введите ответ словом.</p>',
+          question: 'Как называется архитектурный принцип: «каждый модуль отвечает только за одну задачу»?',
+          answers: [],
+          correct: { mode: 'exact', value: 'single responsibility principle' },
+          explanation: 'Это SRP — Single Responsibility Principle.'
+        },
+        {
+          id: 4,
+          type: 'matching',
+          contentHTML: '<p class="text-slate-600 dark:text-slate-300">Перетащите элементы справа к соответствующим понятиям слева.</p>',
+          question: 'Сопоставьте термин и назначение',
+          answers: {
+            left: ['requestAnimationFrame', 'localStorage', 'AABB'],
+            right: ['Хранилище данных в браузере', 'Коллизия прямоугольников', 'Планирование кадра рендера']
+          },
+          correct: {
+            pairs: [
+              ['requestAnimationFrame', 'Планирование кадра рендера'],
+              ['localStorage', 'Хранилище данных в браузере'],
+              ['AABB', 'Коллизия прямоугольников']
+            ]
+          },
+          explanation: 'Эти пары являются базой для realtime UI/игровых веб-приложений.'
+        },
+        {
+          id: 5,
+          type: 'input',
+          contentHTML: '<div class="aspect-video overflow-hidden rounded-xl"><iframe class="h-full w-full" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="Video" allowfullscreen></iframe></div>',
+          question: 'После просмотра видео: введите слово "music" (допускается частичное совпадение по ключевым словам).',
+          answers: [],
+          correct: { mode: 'partial', keywords: ['music', 'song', 'rick'] },
+          explanation: 'Для partial-режима достаточно совпадения по одному ключевому слову/regex.'
+        }
+      ]
+    };
+
+    const state = {
+      index: 0,
+      startedAt: null,
+      checked: false,
+      userAnswers: {},
+      timerInterval: null,
+      shuffledMatchingRight: {}
+    };
+
+    const ui = {
+      mainMenu: document.getElementById('mainMenu'),
+      quizScreen: document.getElementById('quizScreen'),
+      resultScreen: document.getElementById('resultScreen'),
+      historyPanel: document.getElementById('historyPanel'),
+      continueBtn: document.getElementById('continueBtn'),
+      quizTitle: document.getElementById('quizTitle'),
+      quizTitleHeader: document.getElementById('quizTitleHeader'),
+      currentIndex: document.getElementById('currentIndex'),
+      totalQuestions: document.getElementById('totalQuestions'),
+      progressBar: document.getElementById('progressBar'),
+      timer: document.getElementById('timer'),
+      questionContent: document.getElementById('questionContent'),
+      questionText: document.getElementById('questionText'),
+      answerArea: document.getElementById('answerArea'),
+      feedbackBox: document.getElementById('feedbackBox'),
+      checkBtn: document.getElementById('checkBtn'),
+      nextBtn: document.getElementById('nextBtn'),
+      resultSummary: document.getElementById('resultSummary'),
+      detailsBody: document.getElementById('detailsBody'),
+      editorPanel: document.getElementById('editorPanel'),
+      editorTextarea: document.getElementById('editorTextarea')
+    };
+
+    function init() {
+      ui.quizTitle.textContent = quizData.title;
+      ui.quizTitleHeader.textContent = quizData.title;
+      ui.totalQuestions.textContent = String(quizData.questions.length);
+      applyStoredTheme();
+      bindEvents();
+      setupEditMode();
+      renderHistory();
+      checkResumeAvailability();
+      animateIn(ui.mainMenu);
+      if (location.hash.startsWith('#result=')) renderSharedResult();
+    }
+
+    function bindEvents() {
+      document.getElementById('startBtn').addEventListener('click', () => startQuiz(true));
+      document.getElementById('showHistoryBtn').addEventListener('click', toggleHistory);
+      ui.continueBtn.addEventListener('click', () => startQuiz(false));
+      ui.checkBtn.addEventListener('click', checkCurrentAnswer);
+      ui.nextBtn.addEventListener('click', nextQuestion);
+      document.getElementById('restartBtn').addEventListener('click', restartQuiz);
+      document.getElementById('downloadBtn').addEventListener('click', downloadResult);
+      document.getElementById('copyLinkBtn').addEventListener('click', copyResultLink);
+      document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+      document.getElementById('applyEditBtn').addEventListener('click', applyQuizEdit);
+    }
+
+    function setupEditMode() {
+      if (!EDIT_MODE) return;
+      ui.editorPanel.classList.remove('hidden');
+      ui.editorTextarea.value = JSON.stringify(quizData, null, 2);
+    }
+
+    function applyQuizEdit() {
+      if (!EDIT_MODE) return;
+      try {
+        const parsed = JSON.parse(ui.editorTextarea.value);
+        if (!Array.isArray(parsed.questions)) throw new Error('questions must be an array');
+        quizData.title = parsed.title || quizData.title;
+        quizData.timeLimitSec = parsed.timeLimitSec || quizData.timeLimitSec;
+        quizData.questions = parsed.questions;
+        ui.quizTitle.textContent = quizData.title;
+        ui.quizTitleHeader.textContent = quizData.title;
+        ui.totalQuestions.textContent = String(quizData.questions.length);
+        alert('Данные обновлены. Начните тест заново.');
+      } catch (error) {
+        alert('Ошибка JSON: ' + error.message);
+      }
+    }
+
+    function startQuiz(reset = true) {
+      if (reset) {
+        state.index = 0;
+        state.startedAt = Date.now();
+        state.userAnswers = {};
+        state.checked = false;
+        localStorage.removeItem(STORAGE_KEYS.progress);
+      } else {
+        const saved = getSavedProgress();
+        if (!saved) return;
+        state.index = saved.index;
+        state.startedAt = saved.startedAt;
+        state.userAnswers = saved.userAnswers || {};
+      }
+      showSection('quiz');
+      startTimer();
+      renderQuestion();
+    }
+
+    function startTimer() {
+      clearInterval(state.timerInterval);
+      state.timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
+        ui.timer.textContent = formatTime(elapsed);
+        if (elapsed >= quizData.timeLimitSec) finishQuiz();
+      }, 1000);
+    }
+
+    function renderQuestion() {
+      state.checked = false;
+      ui.feedbackBox.className = 'feedback-enter mt-5 hidden rounded-xl border p-4';
+      ui.nextBtn.classList.add('hidden');
+      ui.checkBtn.classList.remove('hidden');
+
+      const q = quizData.questions[state.index];
+      ui.currentIndex.textContent = String(state.index + 1);
+      ui.progressBar.style.width = `${((state.index + 1) / quizData.questions.length) * 100}%`;
+      ui.questionContent.innerHTML = q.contentHTML || '';
+      ui.questionText.textContent = q.question;
+      ui.answerArea.innerHTML = '';
+
+      if (q.type === 'multiple') renderMultiple(q);
+      if (q.type === 'yesno') renderYesNo();
+      if (q.type === 'input') renderInput();
+      if (q.type === 'matching') renderMatching(q);
+
+      animateIn(ui.quizScreen);
+      saveProgress();
+    }
+
+    function renderMultiple(q) {
+      const isMulti = Array.isArray(q.correct);
+      q.answers.forEach((answer, idx) => {
+        const id = `opt-${q.id}-${idx}`;
+        const checked = (state.userAnswers[q.id] || []).includes(answer);
+        ui.answerArea.insertAdjacentHTML('beforeend', `
+          <label for="${id}" class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-300 p-3 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800">
+            <input id="${id}" type="${isMulti ? 'checkbox' : 'radio'}" name="q${q.id}" value="${escapeHtml(answer)}" ${checked ? 'checked' : ''}>
+            <span>${answer}</span>
+          </label>
+        `);
+      });
+    }
+
+    function renderYesNo() {
+      const val = state.userAnswers[quizData.questions[state.index].id];
+      ui.answerArea.innerHTML = `
+        <div class="grid grid-cols-2 gap-3">
+          <button data-yn="да" class="yn-btn rounded-xl border border-slate-300 p-4 text-xl font-bold hover:bg-emerald-100 dark:border-slate-700 dark:hover:bg-emerald-900/30 ${val === 'да' ? 'bg-emerald-200 dark:bg-emerald-700/30' : ''}">Да</button>
+          <button data-yn="нет" class="yn-btn rounded-xl border border-slate-300 p-4 text-xl font-bold hover:bg-rose-100 dark:border-slate-700 dark:hover:bg-rose-900/30 ${val === 'нет' ? 'bg-rose-200 dark:bg-rose-700/30' : ''}">Нет</button>
+        </div>
+      `;
+      ui.answerArea.querySelectorAll('.yn-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.userAnswers[quizData.questions[state.index].id] = btn.dataset.yn;
+          renderYesNo();
+          saveProgress();
+        });
+      });
+    }
+
+    function renderInput() {
+      const q = quizData.questions[state.index];
+      const val = state.userAnswers[q.id] || '';
+      ui.answerArea.innerHTML = `<input id="inputAnswer" class="w-full rounded-xl border border-slate-300 p-3 dark:border-slate-700 dark:bg-slate-800" placeholder="Введите ответ" value="${escapeHtml(val)}">`;
+      ui.answerArea.querySelector('#inputAnswer').addEventListener('input', (e) => {
+        state.userAnswers[q.id] = e.target.value;
+        saveProgress();
+      });
+    }
+
+    function renderMatching(q) {
+      if (!state.shuffledMatchingRight[q.id]) {
+        state.shuffledMatchingRight[q.id] = [...q.answers.right].sort(() => Math.random() - 0.5);
+      }
+      const current = state.userAnswers[q.id] || {};
+      ui.answerArea.innerHTML = `
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="space-y-3">
+            ${q.answers.left.map(left => `
+              <div class="rounded-lg border border-slate-300 p-3 dark:border-slate-700">
+                <div class="mb-2 font-semibold">${left}</div>
+                <div class="drop-target rounded-lg p-2" data-left="${escapeHtml(left)}">${current[left] ? `<div class="rounded bg-indigo-100 p-2 text-sm dark:bg-indigo-900/40">${current[left]}</div>` : '<span class="text-sm text-slate-400">Перетащите сюда</span>'}</div>
+              </div>
+            `).join('')}
+          </div>
+          <div>
+            <div class="mb-2 text-sm text-slate-500">Элементы для перетаскивания</div>
+            <div id="dragPool" class="space-y-2 rounded-lg border border-slate-300 p-3 dark:border-slate-700">
+              ${state.shuffledMatchingRight[q.id].filter(r => !Object.values(current).includes(r)).map(right => `<div draggable="true" class="draggable rounded bg-slate-100 p-2 dark:bg-slate-800" data-right="${escapeHtml(right)}">${right}</div>`).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      ui.answerArea.querySelectorAll('.draggable').forEach(el => {
+        el.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', el.dataset.right));
+      });
+      ui.answerArea.querySelectorAll('.drop-target').forEach(target => {
+        target.addEventListener('dragover', e => e.preventDefault());
+        target.addEventListener('drop', e => {
+          e.preventDefault();
+          const right = e.dataTransfer.getData('text/plain');
+          const left = target.dataset.left;
+          if (!state.userAnswers[q.id]) state.userAnswers[q.id] = {};
+          for (const key of Object.keys(state.userAnswers[q.id])) {
+            if (state.userAnswers[q.id][key] === right) delete state.userAnswers[q.id][key];
+          }
+          state.userAnswers[q.id][left] = right;
+          saveProgress();
+          renderMatching(q);
+        });
+      });
+    }
+
+    function collectAnswer(q) {
+      if (q.type === 'multiple') {
+        const checked = [...ui.answerArea.querySelectorAll('input:checked')].map(i => i.value);
+        state.userAnswers[q.id] = checked;
+      }
+      if (q.type === 'input') {
+        state.userAnswers[q.id] = ui.answerArea.querySelector('#inputAnswer')?.value || '';
+      }
+      saveProgress();
+      return state.userAnswers[q.id];
+    }
+
+    function normalizeText(text) {
+      return String(text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    function checkCurrentAnswer() {
+      const q = quizData.questions[state.index];
+      const answer = collectAnswer(q);
+      const check = evaluateAnswer(q, answer);
+      state.checked = true;
+      ui.checkBtn.classList.add('hidden');
+      ui.nextBtn.classList.remove('hidden');
+      ui.feedbackBox.classList.remove('hidden');
+      ui.feedbackBox.classList.add('feedback-enter-active');
+      ui.feedbackBox.classList.add(check.correct ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20' : 'border-rose-400 bg-rose-50 dark:bg-rose-900/20');
+      ui.feedbackBox.innerHTML = `<p class="font-bold ${check.correct ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}">${check.correct ? 'Верно' : 'Неверно'}</p><p class="mt-2 text-sm">${q.explanation}</p>`;
+      saveProgress();
+    }
+
+    function evaluateAnswer(q, answer) {
+      if (q.type === 'multiple') {
+        const a = [...(answer || [])].sort();
+        const c = [...q.correct].sort();
+        return { correct: JSON.stringify(a) === JSON.stringify(c) };
+      }
+      if (q.type === 'yesno') {
+        return { correct: normalizeText(answer) === normalizeText(q.correct) };
+      }
+      if (q.type === 'input') {
+        const u = normalizeText(answer);
+        if (typeof q.correct === 'object' && q.correct.mode === 'partial') {
+          const keywords = q.correct.keywords || [];
+          const regex = q.correct.regex ? new RegExp(q.correct.regex, 'i') : null;
+          const hit = keywords.some(k => u.includes(normalizeText(k))) || (regex ? regex.test(u) : false);
+          return { correct: hit };
+        }
+        const expected = typeof q.correct === 'object' ? q.correct.value : q.correct;
+        return { correct: u === normalizeText(expected) };
+      }
+      if (q.type === 'matching') {
+        const pairs = q.correct.pairs;
+        const user = answer || {};
+        const ok = pairs.every(([left, right]) => user[left] === right);
+        return { correct: ok };
+      }
+      return { correct: false };
+    }
+
+    function nextQuestion() {
+      if (!state.checked) return;
+      state.index += 1;
+      if (state.index >= quizData.questions.length) {
+        finishQuiz();
+      } else {
+        renderQuestion();
+      }
+    }
+
+    function finishQuiz() {
+      clearInterval(state.timerInterval);
+      const elapsedSec = Math.floor((Date.now() - state.startedAt) / 1000);
+      const detail = quizData.questions.map(q => {
+        const user = state.userAnswers[q.id];
+        const isCorrect = evaluateAnswer(q, user).correct;
+        return {
+          id: q.id,
+          question: q.question,
+          userAnswer: formatAnswer(user),
+          correctAnswer: formatCorrect(q),
+          explanation: q.explanation,
+          isCorrect
+        };
+      });
+      const correctCount = detail.filter(d => d.isCorrect).length;
+      const result = {
+        title: quizData.title,
+        dateISO: new Date().toISOString(),
+        elapsedSec,
+        total: quizData.questions.length,
+        correctCount,
+        wrongCount: quizData.questions.length - correctCount,
+        percent: Math.round((correctCount / quizData.questions.length) * 100),
+        detail
+      };
+
+      const all = JSON.parse(localStorage.getItem(STORAGE_KEYS.results) || '[]');
+      all.unshift(result);
+      localStorage.setItem(STORAGE_KEYS.results, JSON.stringify(all.slice(0, 20)));
+      localStorage.removeItem(STORAGE_KEYS.progress);
+
+      showResults(result);
+    }
+
+    function showResults(result) {
+      showSection('result');
+      ui.resultSummary.innerHTML = `
+        <div class="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><div class="text-sm text-slate-500">Процент</div><div class="text-2xl font-bold">${result.percent}%</div></div>
+        <div class="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><div class="text-sm text-slate-500">Правильных / Неправильных</div><div class="text-2xl font-bold">${result.correctCount} / ${result.wrongCount}</div></div>
+        <div class="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><div class="text-sm text-slate-500">Время</div><div class="text-2xl font-bold">${formatTime(result.elapsedSec)}</div></div>
+      `;
+      ui.detailsBody.innerHTML = result.detail.map((d, i) => `
+        <tr class="border-b border-slate-200 dark:border-slate-800">
+          <td class="px-2 py-2">${i + 1}</td>
+          <td class="px-2 py-2">${d.question}</td>
+          <td class="px-2 py-2 ${d.isCorrect ? 'text-emerald-600' : 'text-rose-600'}">${escapeHtml(d.userAnswer)}</td>
+          <td class="px-2 py-2">${escapeHtml(d.correctAnswer)}</td>
+          <td class="px-2 py-2">${d.explanation}</td>
+        </tr>
+      `).join('');
+      window.__lastResult = result;
+      animateIn(ui.resultScreen);
+    }
+
+    function renderHistory() {
+      const history = JSON.parse(localStorage.getItem(STORAGE_KEYS.results) || '[]');
+      if (!history.length) {
+        ui.historyPanel.innerHTML = '<p class="text-sm text-slate-500">Пока нет сохранённых прохождений.</p>';
+        return;
+      }
+      ui.historyPanel.innerHTML = `<ul class="space-y-2">${history.map((r, i) => `<li class="rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">#${i + 1}: ${new Date(r.dateISO).toLocaleString('ru-RU')} — ${r.percent}% (${r.correctCount}/${r.total}), время: ${formatTime(r.elapsedSec)}</li>`).join('')}</ul>`;
+    }
+
+    function checkResumeAvailability() {
+      ui.continueBtn.classList.toggle('hidden', !getSavedProgress());
+    }
+
+    function getSavedProgress() {
+      const raw = localStorage.getItem(STORAGE_KEYS.progress);
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    function saveProgress() {
+      localStorage.setItem(STORAGE_KEYS.progress, JSON.stringify({
+        index: state.index,
+        startedAt: state.startedAt,
+        userAnswers: state.userAnswers
+      }));
+    }
+
+    function restartQuiz() {
+      state.index = 0;
+      state.userAnswers = {};
+      state.checked = false;
+      state.shuffledMatchingRight = {};
+      startQuiz(true);
+    }
+
+    function downloadResult() {
+      if (!window.__lastResult) return;
+      const blob = new Blob([JSON.stringify(window.__lastResult, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'quiz-result.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function copyResultLink() {
+      if (!window.__lastResult) return;
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(window.__lastResult))));
+      const link = `${location.origin}${location.pathname}#result=${encoded}`;
+      try {
+        await navigator.clipboard.writeText(link);
+        alert('Ссылка скопирована в буфер обмена.');
+      } catch {
+        prompt('Скопируйте ссылку вручную:', link);
+      }
+    }
+
+    function renderSharedResult() {
+      try {
+        const encoded = location.hash.replace('#result=', '');
+        const data = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+        showResults(data);
+      } catch {
+        console.warn('Не удалось прочитать shared result из URL');
+      }
+    }
+
+    function formatAnswer(answer) {
+      if (Array.isArray(answer)) return answer.join(', ') || '—';
+      if (answer && typeof answer === 'object') return Object.entries(answer).map(([l, r]) => `${l} → ${r}`).join('; ') || '—';
+      return answer ? String(answer) : '—';
+    }
+
+    function formatCorrect(q) {
+      if (q.type === 'multiple') return q.correct.join(', ');
+      if (q.type === 'matching') return q.correct.pairs.map(([l, r]) => `${l} → ${r}`).join('; ');
+      if (q.type === 'input') return q.correct.mode === 'partial' ? `Любое из: ${(q.correct.keywords || []).join(', ')}` : (q.correct.value || q.correct);
+      return String(q.correct);
+    }
+
+    function formatTime(totalSec) {
+      const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+      const s = String(totalSec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function toggleHistory() {
+      ui.historyPanel.classList.toggle('hidden');
+      renderHistory();
+    }
+
+    function showSection(name) {
+      ui.mainMenu.classList.toggle('hidden', name !== 'menu');
+      ui.quizScreen.classList.toggle('hidden', name !== 'quiz');
+      ui.resultScreen.classList.toggle('hidden', name !== 'result');
+    }
+
+    function toggleTheme() {
+      const dark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem(STORAGE_KEYS.theme, dark ? 'dark' : 'light');
+    }
+
+    function applyStoredTheme() {
+      const t = localStorage.getItem(STORAGE_KEYS.theme);
+      if (t === 'dark') document.documentElement.classList.add('dark');
+      if (t === 'light') document.documentElement.classList.remove('dark');
+    }
+
+    function animateIn(el) {
+      el.classList.add('card-enter');
+      requestAnimationFrame(() => el.classList.add('card-enter-active'));
+      setTimeout(() => {
+        el.classList.remove('card-enter', 'card-enter-active');
+      }, 380);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    init();
+  </script>
+
+  <!--
+    ИНСТРУКЦИЯ ДЛЯ АВТОРА:
+    1) Все вопросы редактируются только в объекте quizData.questions.
+    2) Для нового вопроса добавьте объект с полями: id, type, contentHTML, question, answers, correct, explanation.
+    3) Типы: multiple, yesno, input, matching.
+    4) Для input поддерживаются режимы:
+       - exact: { mode: "exact", value: "точный ответ" }
+       - partial: { mode: "partial", keywords: ["k1","k2"], regex: "..." }
+    5) Для matching используйте:
+       answers: { left: [...], right: [...] }
+       correct: { pairs: [[left,right], ...] }
+    6) Чтобы включить панель редактирования, измените const EDIT_MODE = false; на true.
+    7) Название теста меняется в quizData.title.
+    8) Лимит времени в секундах меняется в quizData.timeLimitSec.
+    9) История результатов хранится в localStorage (ключ quiz_results).
+    10) Прогресс прохождения хранится в localStorage (ключ quiz_progress).
+  -->
+</body>
+</html>
